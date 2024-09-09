@@ -3,15 +3,16 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/fs"
+	"github.com/gocarina/gocsv"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
-var export []string
+var export = make(map[Channel][]Message)
 
 func main() {
-	if err := WalkFiles("./messages", parseChannelId); err != nil {
+	if err := ParseChannel("./messages"); err != nil {
 		panic(err)
 	}
 
@@ -20,54 +21,111 @@ func main() {
 		return
 	}
 
-	fmt.Println("Exporting", len(export), "channels to channels.txt")
+	fmt.Printf("Found %d channels\n", len(export))
 
-	file, _ := os.Create("channels.txt")
-
-	for _, id := range export {
-		file.WriteString(id + "\n")
+	for channel := range export {
+		ParseMessages(channel)
 	}
 
-	file.Close()
-}
+	out, _ := os.Create("messages.txt")
 
-type channel struct {
-	Id string `json:"id"`
-}
+	for channel, messages := range export {
+		out.WriteString(channel.Id + ":\n")
 
-func parseChannelId(path string, info fs.FileInfo, _ error) error {
-	if info.Name() == "channel.json" {
-		var data channel
-
-		// Read the file
-		file, err := os.Open(path)
-		if err != nil {
-			return err
+		for _, message := range messages {
+			out.WriteString(fmt.Sprintf("%s,", message.Id))
 		}
 
-		err = json.NewDecoder(file).Decode(&data)
-		if err != nil {
-			return err
-		}
-
-		export = append(export, data.Id)
+		out.WriteString("\n\n")
 	}
 
-	return nil
+	out.Close()
+
+	fmt.Println("Done")
 }
 
-// WalkFiles walks the file tree rooted at root, calling walkFn for each file or
-// directory in the tree, including root.
-func WalkFiles(root string, walkFn filepath.WalkFunc) error {
-	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+func ParseChannel(path string) error {
+	return filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
 		if info == nil {
 			return err
 		}
 
-		if info.IsDir() {
-			return nil
+		fileName := strings.TrimSuffix(info.Name(), filepath.Ext(info.Name()))
+		if fileName == "channel" {
+			var data Channel
+
+			file, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+
+			err = json.NewDecoder(file).Decode(&data)
+			if err != nil {
+				return err
+			}
+
+			export[data] = nil
 		}
 
-		return walkFn(path, info, err)
+		return nil
 	})
 }
+
+func ParseMessages(channel Channel) {
+	var data []Message
+	var err error
+
+	file, rt := FindMessageFile(
+		fmt.Sprintf("./messages/c%s/messages", channel.Id), 0)
+	switch rt {
+	case -1:
+		fmt.Printf("No messages found at %s, this is probably an empty channel\n", channel.Id)
+		return
+	case 0:
+		err = json.NewDecoder(file).Decode(&data)
+	case 1:
+		err = gocsv.UnmarshalFile(file, &data)
+	}
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	file.Close()
+	export[channel] = data
+	return
+}
+
+func FindMessageFile(path string, index int) (*os.File, int) {
+	if index >= len(extensions) {
+		return nil, -1
+	}
+
+	file, err := os.Open(path + extensions[index])
+	if err != nil {
+		return FindMessageFile(path, index+1)
+	}
+
+	return file, index
+}
+
+type Channel struct {
+	Id    string `json:"id"`
+	Type  int    `json:"type"`
+	Name  string `json:"name"`
+	Guild Guild  `json:"guild"`
+}
+
+type Guild struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type Message struct {
+	Id        string `csv:"ID" json:"ID"`
+	Timestamp string `csv:"Timestamp" json:"Timestamp"`
+	Contents  string `csv:"Contents" json:"Contents"`
+}
+
+var extensions = []string{".json", ".csv"}
