@@ -30,7 +30,7 @@ func main() {
 	out, _ := os.Create("messages.txt")
 
 	for channel, messages := range export {
-		out.WriteString(channel.Id + ":\n")
+		out.WriteString(channel.Id.String() + ":\n")
 
 		for _, message := range messages {
 			out.WriteString(fmt.Sprintf("%s,", message.Id))
@@ -111,21 +111,20 @@ func FindMessageFile(path string, index int) (*os.File, int) {
 }
 
 type Channel struct {
-	Id    string `json:"id"`
-	Type  int    `json:"type"`
-	Name  string `json:"name"`
-	Guild Guild  `json:"guild"`
+	Id    json.Number `json:"id"`
+	Name  string      `json:"name"`
+	Guild Guild       `json:"guild"`
 }
 
 type Guild struct {
-	Id   string `json:"id"`
-	Name string `json:"name"`
+	Id   json.Number `json:"id"`
+	Name string      `json:"name"`
 }
 
 type Message struct {
-	Id        string `csv:"ID" json:"ID"`
-	Timestamp string `csv:"Timestamp" json:"Timestamp"`
-	Contents  string `csv:"Contents" json:"Contents"`
+	Id        json.Number `csv:"ID" json:"ID"`
+	Timestamp string      `csv:"Timestamp" json:"Timestamp"`
+	Contents  string      `csv:"Contents" json:"Contents"`
 }
 
 var extensions = []string{".json", ".csv"}
