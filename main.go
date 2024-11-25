@@ -36,6 +36,7 @@ func main() {
 			out.WriteString(fmt.Sprintf("%s,", message.Id))
 		}
 
+		out.Seek(-1, 2)
 		out.WriteString("\n\n")
 	}
 
