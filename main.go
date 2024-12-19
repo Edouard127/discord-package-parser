@@ -27,7 +27,7 @@ func main() {
 	}
 
 	writer := csv.NewWriter(file)
-	writer.Write([]string{"ChannelID", "MessageIDs"})
+	writer.Write([]string{"channel_id", "message_id"})
 
 	var messageCount int
 	var ignoreCount int
