@@ -1,131 +1,56 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
-	"github.com/gocarina/gocsv"
+	"encoding/csv"
+	"github.com/alexflint/go-arg"
+	"log"
 	"os"
-	"path/filepath"
-	"strings"
 )
 
-var export = make(map[Channel][]Message)
+var options Options
 
 func main() {
-	if err := ParseChannel("./messages"); err != nil {
-		panic(err)
-	}
+	arg.MustParse(&options)
 
-	if len(export) == 0 {
-		fmt.Println("No channels found")
+	data := DoParse("./messages")
+
+	if len(data) == 0 {
+		log.Println("No channels found")
 		return
 	}
 
-	fmt.Printf("Found %d channels\n", len(export))
+	log.Printf("Found %d channels (including empty channels)\n", len(data))
 
-	for channel := range export {
-		ParseMessages(channel)
+	file, err := os.Create("messages.csv")
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	out, _ := os.Create("messages.txt")
+	writer := csv.NewWriter(file)
+	writer.Write([]string{"channel_id", "message_id"})
 
-	for channel, messages := range export {
-		out.WriteString(channel.Id.String() + ":\n")
+	var messageCount int
+	var ignoreCount int
 
-		for _, message := range messages {
-			out.WriteString(fmt.Sprintf("%s,", message.Id))
-		}
-
-		out.Seek(-1, 2)
-		out.WriteString("\n\n")
-	}
-
-	out.Close()
-
-	fmt.Println("Done")
-}
-
-func ParseChannel(path string) error {
-	return filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
-		if info == nil {
-			return err
-		}
-
-		fileName := strings.TrimSuffix(info.Name(), filepath.Ext(info.Name()))
-		if fileName == "channel" {
-			var data Channel
-
-			file, err := os.Open(path)
-			if err != nil {
-				return err
+	for channel, messages := range data {
+		if len(messages) > 0 {
+			// As of 2024-12-18, Discord want the message format as follow
+			// https://docs.google.com/spreadsheets/d/1XvVHgET0LYrUiDvRy2cPfBMQTIr3AulYkpLbUVdQjGk/
+			for _, message := range messages {
+				writer.Write([]string{channel, message})
 			}
 
-			err = json.NewDecoder(file).Decode(&data)
-			if err != nil {
-				return err
-			}
-
-			export[data] = nil
+			messageCount += len(messages)
+		} else {
+			ignoreCount++
 		}
-
-		return nil
-	})
-}
-
-func ParseMessages(channel Channel) {
-	var data []Message
-	var err error
-
-	file, rt := FindMessageFile(
-		fmt.Sprintf("./messages/c%s/messages", channel.Id), 0)
-	switch rt {
-	case -1:
-		fmt.Printf("No messages found at %s, this is probably an empty channel\n", channel.Id)
-		return
-	case 0:
-		err = json.NewDecoder(file).Decode(&data)
-	case 1:
-		err = gocsv.UnmarshalFile(file, &data)
 	}
 
-	if err != nil {
-		fmt.Println(err)
-		return
+	// Ensure full data integrity
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		log.Fatal("Error flushing writer:", err)
 	}
 
-	file.Close()
-	export[channel] = data
-	return
+	log.Printf("Successfully written %d channels and %d messages\n", len(data)-ignoreCount, messageCount)
 }
-
-func FindMessageFile(path string, index int) (*os.File, int) {
-	if index >= len(extensions) {
-		return nil, -1
-	}
-
-	file, err := os.Open(path + extensions[index])
-	if err != nil {
-		return FindMessageFile(path, index+1)
-	}
-
-	return file, index
-}
-
-type Channel struct {
-	Id    json.Number `json:"id"`
-	Name  string      `json:"name"`
-	Guild Guild       `json:"guild"`
-}
-
-type Guild struct {
-	Id   json.Number `json:"id"`
-	Name string      `json:"name"`
-}
-
-type Message struct {
-	Id        json.Number `csv:"ID" json:"ID"`
-	Timestamp string      `csv:"Timestamp" json:"Timestamp"`
-	Contents  string      `csv:"Contents" json:"Contents"`
-}
-
-var extensions = []string{".json", ".csv"}
