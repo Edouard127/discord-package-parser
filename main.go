@@ -2,11 +2,16 @@ package main
 
 import (
 	"encoding/csv"
+	"github.com/alexflint/go-arg"
 	"log"
 	"os"
 )
 
+var options Options
+
 func main() {
+	arg.MustParse(&options)
+
 	data := DoParse("./messages")
 
 	if len(data) == 0 {
@@ -14,7 +19,7 @@ func main() {
 		return
 	}
 
-	log.Printf("Found %d channels\n", len(data))
+	log.Printf("Found %d channels (including empty channels)\n", len(data))
 
 	file, err := os.Create("messages.csv")
 	if err != nil {
@@ -22,11 +27,23 @@ func main() {
 	}
 
 	writer := csv.NewWriter(file)
-	writer.Write([]string{"ChannelId", "MessageIds"})
+	writer.Write([]string{"ChannelID", "MessageIDs"})
+
+	var messageCount int
+	var ignoreCount int
 
 	for channel, messages := range data {
-		// Write the map as a flat map
-		writer.Write(append([]string{channel}, messages...))
+		if len(messages) > 0 {
+			// As of 2024-12-18, Discord want the message format as follow
+			// https://docs.google.com/spreadsheets/d/1XvVHgET0LYrUiDvRy2cPfBMQTIr3AulYkpLbUVdQjGk/
+			for _, message := range messages {
+				writer.Write([]string{channel, message})
+			}
+
+			messageCount += len(messages)
+		} else {
+			ignoreCount++
+		}
 	}
 
 	// Ensure full data integrity
@@ -35,11 +52,5 @@ func main() {
 		log.Fatal("Error flushing writer:", err)
 	}
 
-	// Count messages for log output
-	var i int
-	for range data {
-		i++
-	}
-
-	log.Printf("Successfully written %d channels and %d messages\n", len(data), i)
+	log.Printf("Successfully written %d channels and %d messages\n", len(data)-ignoreCount, messageCount)
 }

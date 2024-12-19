@@ -6,16 +6,17 @@ import (
 	"github.com/gocarina/gocsv"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
 var extensions = []string{".json", ".csv"}
-var export map[string][]string
+var export = make(map[string][]string)
 
 func DoParse(path string) map[string][]string {
 	parseChannels(path)
 
-	for channel, _ := range export {
+	for channel := range export {
 		parseMessages(channel)
 	}
 
@@ -42,7 +43,10 @@ func parseChannels(path string) {
 				return err
 			}
 
-			export[string(data.Id)] = nil // Persist the map between function calls
+			if !slices.Contains(options.Ignore, string(data.Guild.Id)) &&
+				!slices.Contains(options.Ignore, string(data.Id)) {
+				export[string(data.Id)] = nil // Persist the map between function calls
+			}
 		}
 
 		return nil
